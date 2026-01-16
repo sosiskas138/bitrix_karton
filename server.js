@@ -7,19 +7,26 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3333;
 
-// Логирование всех входящих запросов (до обработки тела)
+// Очень раннее логирование - до всех middleware (для диагностики)
 app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+  console.log('🔴🔴🔴 ВХОДЯЩИЙ ЗАПРОС (самое раннее) 🔴🔴🔴');
+  console.log(`⏰ Время: ${new Date().toISOString()}`);
+  console.log(`📨 Метод: ${req.method}`);
   console.log(`📍 URL: ${req.url}`);
-  console.log(`🔗 Original URL: ${req.originalUrl}`);
-  console.log(`📋 Headers:`, JSON.stringify(req.headers, null, 2));
+  console.log(`🔗 Path: ${req.path}`);
+  console.log(`🌐 Original URL: ${req.originalUrl}`);
+  console.log(`💻 IP: ${req.ip || req.connection.remoteAddress || req.socket.remoteAddress}`);
+  console.log(`📋 Content-Type: ${req.headers['content-type'] || 'не указан'}`);
+  console.log(`📏 Content-Length: ${req.headers['content-length'] || 'не указан'}`);
+  console.log(`🔑 X-Webhook-Signature: ${req.headers['x-webhook-signature'] ? 'есть' : 'нет'}`);
+  console.log(`🆔 X-Webhook-ID: ${req.headers['x-webhook-id'] || 'нет'}`);
   next();
 });
 
-// Middleware для получения сырого тела запроса для всех путей /webhook* (нужно для проверки подписи)
+// Middleware для получения сырого тела запроса ТОЛЬКО для /webhook (нужно для проверки подписи)
 // Важно: это должно быть ДО express.json(), чтобы Express не пытался парсить JSON дважды
-app.use('/webhook*', express.raw({ 
-  type: 'application/json',
+app.use('/webhook', express.raw({ 
+  type: '*/*',  // Принимать любой Content-Type для совместимости
   limit: '10mb' // Лимит размера тела запроса
 }));
 
@@ -268,12 +275,11 @@ async function sendToBitrix(webhookData) {
 }
 
 /**
- * Обработчик для всех путей, начинающихся с /webhook (для диагностики и совместимости)
+ * Обработчик для всех методов на /webhook (для диагностики)
  */
-app.all('/webhook*', (req, res, next) => {
-  console.log(`🔔 Запрос: ${req.method} ${req.path}`);
-  console.log(`📍 URL: ${req.url}`);
-  console.log(`🔗 Original URL: ${req.originalUrl}`);
+app.all('/webhook', (req, res, next) => {
+  console.log(`🔔 Запрос на /webhook: ${req.method}`);
+  console.log(`📥 Headers:`, req.headers);
   console.log(`🌐 IP: ${req.ip || req.connection.remoteAddress}`);
   
   // Если это не POST, отвечаем информацией
@@ -283,42 +289,21 @@ app.all('/webhook*', (req, res, next) => {
       message: `Метод ${req.method} не поддерживается. Используйте POST.`,
       receivedMethod: req.method,
       expectedMethod: 'POST',
-      url: req.url,
-      path: req.path
+      url: req.url
     });
-  }
-  
-  // Если путь не точно /webhook, логируем это
-  if (req.path !== '/webhook') {
-    console.warn(`⚠️  Неожиданный путь: ${req.path}, ожидался /webhook`);
   }
   
   next();
 });
 
 /**
- * Обработчик вебхука от Sasha AI (для точного пути /webhook)
+ * Обработчик вебхука от Sasha AI
  */
 app.post('/webhook', async (req, res) => {
-  console.log('✅ POST /webhook обработчик вызван!');
-  handleWebhook(req, res);
-});
-
-/**
- * Обработчик для всех других путей /webhook* (на случай если Sasha AI отправляет на другой путь)
- */
-app.post('/webhook*', async (req, res) => {
-  console.log(`✅ POST ${req.path} обработчик вызван!`);
-  if (req.path !== '/webhook') {
-    console.warn(`⚠️  Обработка запроса на нестандартный путь: ${req.path}`);
-  }
-  handleWebhook(req, res);
-});
-
-/**
- * Основная функция обработки вебхука
- */
-async function handleWebhook(req, res) {
+  console.log('🔴🔴🔴 POST /webhook ОБРАБОТЧИК ВЫЗВАН! 🔴🔴🔴');
+  console.log(`⏰ Время вызова: ${new Date().toISOString()}`);
+  console.log(`📦 req.body тип: ${typeof req.body}, isBuffer: ${Buffer.isBuffer(req.body)}`);
+  
   try {
     // Проверяем Content-Type
     const contentType = req.headers['content-type'];
@@ -409,20 +394,36 @@ async function handleWebhook(req, res) {
       });
 
     // Отвечаем сразу, чтобы не превысить таймаут в 10 секунд
-    res.status(200).json({ 
+    console.log('📤 Отправка ответа 200 OK...');
+    console.log(`📋 Event ID: ${webhookData.id}`);
+    
+    const response = { 
       success: true, 
       message: 'Webhook получен и обрабатывается',
       eventId: webhookData.id 
-    });
+    };
+    
+    res.status(200).json(response);
+    console.log('✅ Ответ 200 OK отправлен успешно');
+    console.log(`📦 Размер ответа: ${JSON.stringify(response).length} байт`);
 
   } catch (error) {
-    console.error('Ошибка обработки вебхука:', error);
-    res.status(500).json({ 
-      error: 'Внутренняя ошибка сервера',
-      message: error.message 
-    });
+    console.error('❌❌❌ ОШИБКА обработки вебхука ❌❌❌');
+    console.error('Тип ошибки:', error.constructor.name);
+    console.error('Сообщение:', error.message);
+    console.error('Стек:', error.stack);
+    
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        error: 'Внутренняя ошибка сервера',
+        message: error.message 
+      });
+      console.log('📤 Ответ 500 отправлен');
+    } else {
+      console.error('⚠️  Заголовки уже отправлены, невозможно отправить ответ');
+    }
   }
-}
+});
 
 // Health check endpoint
 app.get('/health', (req, res) => {

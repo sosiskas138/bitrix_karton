@@ -1,11 +1,8 @@
 # Используем официальный Node.js образ (Alpine для меньшего размера)
 FROM node:18-alpine
 
-# Настройка быстрых зеркал Alpine для ускорения установки пакетов
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirror.yandex.ru\/mirrors\/alpine/g' /etc/apk/repositories || true
-
-# Устанавливаем curl для health check (быстрее чем wget)
-RUN apk add --no-cache curl
+# Не устанавливаем дополнительные пакеты - используем Node.js для health check
+# Это быстрее и надежнее
 
 # Устанавливаем рабочую директорию
 WORKDIR /app

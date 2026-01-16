@@ -10,6 +10,9 @@ const PORT = process.env.PORT || 3333;
 // Логирование всех входящих запросов (до обработки тела)
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+  console.log(`📍 URL: ${req.url}`);
+  console.log(`🔗 Original URL: ${req.originalUrl}`);
+  console.log(`📋 Headers:`, JSON.stringify(req.headers, null, 2));
   next();
 });
 
@@ -265,9 +268,32 @@ async function sendToBitrix(webhookData) {
 }
 
 /**
+ * Обработчик для всех методов на /webhook (для диагностики)
+ */
+app.all('/webhook', (req, res, next) => {
+  console.log(`🔔 Запрос на /webhook: ${req.method}`);
+  console.log(`📥 Headers:`, req.headers);
+  console.log(`🌐 IP: ${req.ip || req.connection.remoteAddress}`);
+  
+  // Если это не POST, отвечаем информацией
+  if (req.method !== 'POST') {
+    return res.status(405).json({
+      error: 'Method Not Allowed',
+      message: `Метод ${req.method} не поддерживается. Используйте POST.`,
+      receivedMethod: req.method,
+      expectedMethod: 'POST',
+      url: req.url
+    });
+  }
+  
+  next();
+});
+
+/**
  * Обработчик вебхука от Sasha AI
  */
 app.post('/webhook', async (req, res) => {
+  console.log('✅ POST /webhook обработчик вызван!');
   try {
     // Проверяем Content-Type
     const contentType = req.headers['content-type'];

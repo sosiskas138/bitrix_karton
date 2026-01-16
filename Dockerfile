@@ -24,7 +24,7 @@ RUN addgroup -g 1001 -S nodejs && \
 USER nodejs
 
 # Открываем порт
-EXPOSE 3000
+EXPOSE 3333
 
 # Запускаем приложение
 CMD ["node", "server.js"]

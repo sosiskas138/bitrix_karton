@@ -1,0 +1,26 @@
+services:
+  webhook-server:
+    build: .
+    container_name: sasha-webhook-bitrix
+    ports:
+      - "${PORT:-3000}:3000"
+    env_file:
+      - .env
+    restart: unless-stopped
+    volumes:
+      # Монтируем код для разработки (можно закомментировать для продакшена)
+      - ./server.js:/app/server.js:ro
+      - ./mapping.js:/app/mapping.js:ro
+      - ./bitrix-fields.js:/app/bitrix-fields.js:ro
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - webhook-network
+
+networks:
+  webhook-network:
+    driver: bridge

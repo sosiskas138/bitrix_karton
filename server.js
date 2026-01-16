@@ -16,9 +16,9 @@ app.use((req, res, next) => {
   next();
 });
 
-// Middleware для получения сырого тела запроса ТОЛЬКО для /webhook (нужно для проверки подписи)
+// Middleware для получения сырого тела запроса для всех путей /webhook* (нужно для проверки подписи)
 // Важно: это должно быть ДО express.json(), чтобы Express не пытался парсить JSON дважды
-app.use('/webhook', express.raw({ 
+app.use('/webhook*', express.raw({ 
   type: 'application/json',
   limit: '10mb' // Лимит размера тела запроса
 }));
@@ -268,11 +268,12 @@ async function sendToBitrix(webhookData) {
 }
 
 /**
- * Обработчик для всех методов на /webhook (для диагностики)
+ * Обработчик для всех путей, начинающихся с /webhook (для диагностики и совместимости)
  */
-app.all('/webhook', (req, res, next) => {
-  console.log(`🔔 Запрос на /webhook: ${req.method}`);
-  console.log(`📥 Headers:`, req.headers);
+app.all('/webhook*', (req, res, next) => {
+  console.log(`🔔 Запрос: ${req.method} ${req.path}`);
+  console.log(`📍 URL: ${req.url}`);
+  console.log(`🔗 Original URL: ${req.originalUrl}`);
   console.log(`🌐 IP: ${req.ip || req.connection.remoteAddress}`);
   
   // Если это не POST, отвечаем информацией
@@ -282,18 +283,42 @@ app.all('/webhook', (req, res, next) => {
       message: `Метод ${req.method} не поддерживается. Используйте POST.`,
       receivedMethod: req.method,
       expectedMethod: 'POST',
-      url: req.url
+      url: req.url,
+      path: req.path
     });
+  }
+  
+  // Если путь не точно /webhook, логируем это
+  if (req.path !== '/webhook') {
+    console.warn(`⚠️  Неожиданный путь: ${req.path}, ожидался /webhook`);
   }
   
   next();
 });
 
 /**
- * Обработчик вебхука от Sasha AI
+ * Обработчик вебхука от Sasha AI (для точного пути /webhook)
  */
 app.post('/webhook', async (req, res) => {
   console.log('✅ POST /webhook обработчик вызван!');
+  handleWebhook(req, res);
+});
+
+/**
+ * Обработчик для всех других путей /webhook* (на случай если Sasha AI отправляет на другой путь)
+ */
+app.post('/webhook*', async (req, res) => {
+  console.log(`✅ POST ${req.path} обработчик вызван!`);
+  if (req.path !== '/webhook') {
+    console.warn(`⚠️  Обработка запроса на нестандартный путь: ${req.path}`);
+  }
+  handleWebhook(req, res);
+});
+
+/**
+ * Основная функция обработки вебхука
+ */
+async function handleWebhook(req, res) {
   try {
     // Проверяем Content-Type
     const contentType = req.headers['content-type'];
@@ -397,7 +422,7 @@ app.post('/webhook', async (req, res) => {
       message: error.message 
     });
   }
-});
+}
 
 // Health check endpoint
 app.get('/health', (req, res) => {

@@ -5,7 +5,7 @@ const { contactMapping, dealMapping, leadMapping, mapFields } = require('./mappi
 require('dotenv').config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3333;
 
 // Логирование всех входящих запросов (до обработки тела)
 app.use((req, res, next) => {

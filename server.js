@@ -253,13 +253,13 @@ async function sendToBitrix(webhookData) {
  * Обработчик вебхука от Sasha AI
  */
 app.post('/webhook', async (req, res) => {
-  const signature = req.headers['x-webhook-signature'];
-  const payload = req.body; // Сырое тело запроса в виде строки
-  const secret = 'ваш_секретный_ключ_вебхука';
+  // const signature = req.headers['x-webhook-signature'];
+  // const payload = req.body; // Сырое тело запроса в виде строки
+  // const secret = 'ваш_секретный_ключ_вебхука';
   
-  if (!verifyWebhookSignature(payload, signature, secret)) {
-    return res.status(401).send('Недействительная подпись');
-  }
+  // if (!verifyWebhookSignature(payload, signature, secret)) {
+  //   return res.status(401).send('Недействительная подпись');
+  // }
   
   // Парсинг JSON из строки
   const webhookData = JSON.parse(payload);

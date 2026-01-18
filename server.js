@@ -254,7 +254,7 @@ async function sendToBitrix(webhookData) {
  */
 app.post('/webhook', async (req, res) => {
   // const signature = req.headers['x-webhook-signature'];
-  // const payload = req.body; // Сырое тело запроса в виде строки
+  const payload = req.body; // Сырое тело запроса в виде строки
   // const secret = 'ваш_секретный_ключ_вебхука';
   
   // if (!verifyWebhookSignature(payload, signature, secret)) {

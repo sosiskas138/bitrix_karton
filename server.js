@@ -372,6 +372,17 @@ app.post('/create-lead', async (req, res) => {
   }
 });
 
+/**
+ * Health check эндпоинт
+ */
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
+
 // Запуск сервера
 app.listen(PORT, () => {
   console.log(`🚀 Сервер запущен на порту ${PORT}`);

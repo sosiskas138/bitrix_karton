@@ -1,6 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const axios = require('axios');
+const { leadMapping, applyMapping } = require('./mapping');
 require('dotenv').config();
 
 const app = express();
@@ -20,6 +21,7 @@ app.use(express.json({ limit: '10mb' }));
 
 /**
  * Функция для заполнения карточки лида в Bitrix
+ * Использует маппинг из mapping.js для преобразования данных
  * @param {Object} data - Данные в формате вебхука от Sasha AI
  * @returns {Promise<Object>} - Результат создания лида в Bitrix
  */
@@ -30,152 +32,23 @@ async function createLeadInBitrix(data) {
     throw new Error('BITRIX_WEBHOOK_URL не установлен в переменных окружения');
   }
 
-  // Извлечение данных из структуры
-  const contact = data.contact || {};
-  const call = data.call || {};
-  const agreements = call.agreements || {};
-  const callList = data.callList || {};
+  // Применяем маппинг для преобразования данных вебхука в поля Bitrix
+  const leadFields = applyMapping(data, leadMapping);
   
-  // Формирование имени и фамилии
-  const clientName = agreements.client_name || '';
-  const nameParts = clientName.trim().split(/\s+/);
-  const firstName = nameParts[0] || '';
-  const lastName = nameParts.slice(1).join(' ') || '';
-  
-  // Формирование телефона
-  const phone = contact.phone || '';
-  const phoneFormatted = phone ? phone.replace(/\D/g, '') : '';
-  
-  // Формирование названия лида
-  const leadTitle = agreements.agreements 
-    ? `Лид: ${agreements.agreements.substring(0, 100)}`
-    : `Лид от ${callList.name || 'неизвестного источника'}`;
-  
-  // Формирование комментариев
-  const comments = [];
-  if (agreements.agreements) {
-    comments.push(`Договоренности: ${agreements.agreements}`);
-  }
-  if (agreements.client_facts) {
-    comments.push(`Факты о клиенте: ${agreements.client_facts}`);
-  }
-  if (agreements.smsText) {
-    comments.push(`SMS текст: ${agreements.smsText}`);
-  }
-  if (call.duration) {
-    const durationMinutes = Math.floor(call.duration / 60000);
-    const durationSeconds = Math.floor((call.duration % 60000) / 1000);
-    comments.push(`Длительность звонка: ${durationMinutes} мин ${durationSeconds} сек`);
-  }
-  if (call.startedAt) {
-    comments.push(`Звонок начат: ${new Date(call.startedAt).toLocaleString('ru-RU')}`);
-  }
-  if (call.endedAt) {
-    comments.push(`Звонок завершен: ${new Date(call.endedAt).toLocaleString('ru-RU')}`);
-  }
-  if (agreements.agreements_time) {
-    comments.push(`Время договоренности: ${agreements.agreements_time}`);
-  }
-  if (agreements.lead_destination) {
-    comments.push(`Направление лида: ${agreements.lead_destination}`);
-  }
-  if (agreements.status) {
-    comments.push(`Статус: ${agreements.status}`);
-  }
-  
-  const commentsText = comments.join('\n\n');
-  
-  // Формирование данных для Bitrix
+  // Формируем данные для отправки в Bitrix
   const leadData = {
-    fields: {
-      TITLE: leadTitle,
-      NAME: firstName,
-      LAST_NAME: lastName,
-      COMMENTS: commentsText,
-      SOURCE_ID: 'WEB', // Источник - веб
-      STATUS_ID: 'NEW', // Статус - новый
-    }
+    fields: leadFields
   };
-  
-  // Добавление телефона, если есть
-  if (phoneFormatted) {
-    leadData.fields.PHONE = [
-      {
-        VALUE: phoneFormatted,
-        VALUE_TYPE: 'MOBILE'
-      }
-    ];
-  }
-  
-  // Добавление email, если есть в дополнительных полях
-  if (contact.additionalFields && contact.additionalFields.email) {
-    leadData.fields.EMAIL = [
-      {
-        VALUE: contact.additionalFields.email,
-        VALUE_TYPE: 'WORK'
-      }
-    ];
-  }
-  
-  // Добавление информации о регионе из dadataPhoneInfo
-  if (contact.dadataPhoneInfo) {
-    if (contact.dadataPhoneInfo.region) {
-      leadData.fields.COMMENTS += `\n\nРегион: ${contact.dadataPhoneInfo.region}`;
-    }
-    if (contact.dadataPhoneInfo.provider) {
-      leadData.fields.COMMENTS += `\nОператор: ${contact.dadataPhoneInfo.provider}`;
-    }
-    if (contact.dadataPhoneInfo.timezone) {
-      leadData.fields.COMMENTS += `\nЧасовой пояс: ${contact.dadataPhoneInfo.timezone}`;
-    }
-  }
-  
-  // Добавление информации о колл-листе
-  if (callList.name) {
-    leadData.fields.COMMENTS += `\n\nКолл-лист: ${callList.name}`;
-  }
-  
-  // Добавление тегов контакта
-  if (contact.tags && contact.tags.length > 0) {
-    leadData.fields.COMMENTS += `\nТеги: ${contact.tags.join(', ')}`;
-  }
-  
-  // Добавление дополнительных полей контакта
-  if (contact.additionalFields) {
-    const additionalInfo = [];
-    if (contact.additionalFields.website) {
-      additionalInfo.push(`Сайт: ${contact.additionalFields.website}`);
-    }
-    if (contact.additionalFields.page) {
-      additionalInfo.push(`Страница: ${contact.additionalFields.page}`);
-    }
-    if (contact.additionalFields.ip) {
-      additionalInfo.push(`IP: ${contact.additionalFields.ip}`);
-    }
-    if (additionalInfo.length > 0) {
-      leadData.fields.COMMENTS += `\n\nДополнительная информация:\n${additionalInfo.join('\n')}`;
-    }
-  }
-  
-  // Добавление информации о типе звонка
-  if (call.type) {
-    leadData.fields.COMMENTS += `\n\nТип звонка: ${call.type === 'outgoing' ? 'Исходящий' : 'Входящий'}`;
-  }
-  
-  // Добавление информации о статусе звонка
-  if (call.status) {
-    leadData.fields.COMMENTS += `\nСтатус звонка: ${call.status}`;
-  }
-  
-  // Добавление информации о причине завершения звонка
-  if (call.hangupReason) {
-    leadData.fields.COMMENTS += `\nПричина завершения: ${call.hangupReason}`;
-  }
   
   // Отправка запроса в Bitrix
   try {
+    // Убеждаемся, что URL заканчивается на слэш
+    const url = bitrixWebhookUrl.endsWith('/') 
+      ? `${bitrixWebhookUrl}crm.lead.add`
+      : `${bitrixWebhookUrl}/crm.lead.add`;
+    
     const response = await axios.post(
-      `${bitrixWebhookUrl}crm.lead.add`,
+      url,
       leadData,
       {
         headers: {
@@ -202,7 +75,7 @@ app.post('/webhook', async (req, res) => {
   const payload = req.body; // Сырое тело запроса в виде строки
 
   try {
-    const data = JSON.parse(payload);;
+    const data = JSON.parse(payload);
     
     // Валидация наличия данных
     if (!data || Object.keys(data).length === 0) {

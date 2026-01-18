@@ -265,7 +265,7 @@ app.post('/webhook', async (req, res) => {
   const webhookData = JSON.parse(payload);
   
   try {
-    sendToBitrix(webhookData)
+    console.log(webhookData)
   } catch (error) {
     console.log("error data: ", error)
   }

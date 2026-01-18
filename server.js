@@ -7,22 +7,6 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3333;
 
-// Очень раннее логирование - до всех middleware (для диагностики)
-app.use((req, res, next) => {
-  console.log('🔴🔴🔴 ВХОДЯЩИЙ ЗАПРОС (самое раннее) 🔴🔴🔴');
-  console.log(`⏰ Время: ${new Date().toISOString()}`);
-  console.log(`📨 Метод: ${req.method}`);
-  console.log(`📍 URL: ${req.url}`);
-  console.log(`🔗 Path: ${req.path}`);
-  console.log(`🌐 Original URL: ${req.originalUrl}`);
-  console.log(`💻 IP: ${req.ip || req.connection.remoteAddress || req.socket.remoteAddress}`);
-  console.log(`📋 Content-Type: ${req.headers['content-type'] || 'не указан'}`);
-  console.log(`📏 Content-Length: ${req.headers['content-length'] || 'не указан'}`);
-  console.log(`🔑 X-Webhook-Signature: ${req.headers['x-webhook-signature'] ? 'есть' : 'нет'}`);
-  console.log(`🆔 X-Webhook-ID: ${req.headers['x-webhook-id'] || 'нет'}`);
-  next();
-});
-
 // Middleware для получения сырого тела запроса ТОЛЬКО для /webhook (нужно для проверки подписи)
 // Важно: это должно быть ДО express.json(), чтобы Express не пытался парсить JSON дважды
 app.use('/webhook', express.raw({ 
@@ -42,24 +26,15 @@ app.use(express.json({ limit: '10mb' }));
  * @returns {boolean} - true если подпись валидна
  */
 function verifyWebhookSignature(payload, signature, secret) {
-  if (!signature || !secret) {
-    return false;
-  }
-
   const computed = crypto
     .createHmac('sha256', secret)
     .update(payload)
     .digest('hex');
 
-  // Используем timingSafeEqual для защиты от timing attacks
-  try {
-    return crypto.timingSafeEqual(
-      Buffer.from(computed, 'hex'),
-      Buffer.from(signature, 'hex')
-    );
-  } catch (error) {
-    return false;
-  }
+  return crypto.timingSafeEqual(
+    Buffer.from(computed, 'hex'),
+    Buffer.from(signature, 'hex')
+  );
 }
 
 /**
@@ -275,179 +250,30 @@ async function sendToBitrix(webhookData) {
 }
 
 /**
- * Обработчик для всех методов на /webhook (для диагностики)
- */
-app.all('/webhook', (req, res, next) => {
-  console.log(`🔔 Запрос на /webhook: ${req.method}`);
-  console.log(`📥 Headers:`, req.headers);
-  console.log(`🌐 IP: ${req.ip || req.connection.remoteAddress}`);
-  
-  // Если это не POST, отвечаем информацией
-  if (req.method !== 'POST') {
-    return res.status(405).json({
-      error: 'Method Not Allowed',
-      message: `Метод ${req.method} не поддерживается. Используйте POST.`,
-      receivedMethod: req.method,
-      expectedMethod: 'POST',
-      url: req.url
-    });
-  }
-  
-  next();
-});
-
-/**
  * Обработчик вебхука от Sasha AI
  */
 app.post('/webhook', async (req, res) => {
-  console.log('🔴🔴🔴 POST /webhook ОБРАБОТЧИК ВЫЗВАН! 🔴🔴🔴');
-  console.log(`⏰ Время вызова: ${new Date().toISOString()}`);
-  console.log(`📦 req.body тип: ${typeof req.body}, isBuffer: ${Buffer.isBuffer(req.body)}`);
+  const signature = req.headers['x-webhook-signature'];
+  const payload = req.body; // Сырое тело запроса в виде строки
+  const secret = 'ваш_секретный_ключ_вебхука';
+  
+  if (!verifyWebhookSignature(payload, signature, secret)) {
+    return res.status(401).send('Недействительная подпись');
+  }
+  
+  // Парсинг JSON из строки
+  const webhookData = JSON.parse(payload);
   
   try {
-    // Проверяем Content-Type
-    const contentType = req.headers['content-type'];
-    if (contentType && !contentType.includes('application/json')) {
-      console.warn(`Предупреждение: неожиданный Content-Type: ${contentType}`);
-    }
-
-    // Проверяем, что тело запроса - это Buffer (сырые данные)
-    if (!Buffer.isBuffer(req.body)) {
-      console.error('Ошибка: тело запроса не является Buffer. Проверьте настройку middleware.');
-      console.error('Тип req.body:', typeof req.body);
-      return res.status(500).json({ error: 'Ошибка конфигурации сервера' });
-    }
-
-    // Получаем сырое тело запроса для проверки подписи
-    const payload = req.body.toString('utf8');
-    const signature = req.headers['x-webhook-signature'];
-    const webhookId = req.headers['x-webhook-id'];
-    const timestamp = req.headers['x-webhook-timestamp'];
-    const callListId = req.headers['x-call-list-id'];
-
-    // Логируем информацию о запросе (первые 200 символов для отладки)
-    console.log('📥 Получен вебхук:', {
-      webhookId,
-      timestamp,
-      callListId,
-      hasSignature: !!signature,
-      payloadLength: payload.length,
-      contentType: contentType || 'не указан',
-      payloadPreview: payload.substring(0, 200) + (payload.length > 200 ? '...' : ''),
-    });
-
-    // Проверка подписи (если включена)
-    if (process.env.WEBHOOK_SECRET) {
-      const isValid = verifyWebhookSignature(payload, signature, process.env.WEBHOOK_SECRET);
-      
-      if (!isValid) {
-        console.error('Недействительная подпись вебхука');
-        return res.status(401).json({ error: 'Недействительная подпись' });
-      }
-      
-      console.log('Подпись вебхука проверена успешно');
-    } else {
-      console.warn('ВНИМАНИЕ: Проверка подписи отключена (WEBHOOK_SECRET не установлен)');
-    }
-
-    // Проверяем, что payload не пустой
-    if (!payload || payload.trim().length === 0) {
-      console.error('Ошибка: тело запроса пустое');
-      return res.status(400).json({ error: 'Тело запроса пустое' });
-    }
-
-    // Парсинг JSON из строки
-    let webhookData;
-    try {
-      webhookData = JSON.parse(payload);
-    } catch (parseError) {
-      console.error('Ошибка парсинга JSON:', parseError.message);
-      console.error('Первые 500 символов payload:', payload.substring(0, 500));
-      return res.status(400).json({ 
-        error: 'Неверный формат JSON',
-        message: parseError.message 
-      });
-    }
-
-    // Проверяем структуру данных
-    if (!webhookData.type) {
-      console.warn('Предупреждение: поле "type" отсутствует в данных');
-    }
-
-    // Логирование полученных данных
-    console.log('✅ Данные успешно распарсены:', {
-      type: webhookData.type,
-      id: webhookData.id,
-      hasCall: !!webhookData.call,
-      hasContact: !!webhookData.contact,
-      hasCallList: !!webhookData.callList,
-    });
-
-    // Отправка в Bitrix в фоновом режиме (не блокируем ответ)
     sendToBitrix(webhookData)
-      .then(() => {
-        console.log('Данные успешно отправлены в Bitrix для события:', webhookData.id);
-      })
-      .catch((error) => {
-        console.error('Ошибка при отправке в Bitrix для события:', webhookData.id, error.message);
-        // Здесь можно добавить логику повторных попыток или отправки в очередь
-      });
-
-    // Отвечаем сразу, чтобы не превысить таймаут в 10 секунд
-    console.log('📤 Отправка ответа 200 OK...');
-    console.log(`📋 Event ID: ${webhookData.id}`);
-    
-    const response = { 
-      success: true, 
-      message: 'Webhook получен и обрабатывается',
-      eventId: webhookData.id 
-    };
-    
-    res.status(200).json(response);
-    console.log('✅ Ответ 200 OK отправлен успешно');
-    console.log(`📦 Размер ответа: ${JSON.stringify(response).length} байт`);
-
   } catch (error) {
-    console.error('❌❌❌ ОШИБКА обработки вебхука ❌❌❌');
-    console.error('Тип ошибки:', error.constructor.name);
-    console.error('Сообщение:', error.message);
-    console.error('Стек:', error.stack);
-    
-    if (!res.headersSent) {
-      res.status(500).json({ 
-        error: 'Внутренняя ошибка сервера',
-        message: error.message 
-      });
-      console.log('📤 Ответ 500 отправлен');
-    } else {
-      console.error('⚠️  Заголовки уже отправлены, невозможно отправить ответ');
-    }
+    console.log("error data: ", error)
   }
-});
-
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.status(200).json({ 
-    status: 'ok', 
-    timestamp: new Date().toISOString(),
-    service: 'sasha-webhook-to-bitrix'
-  });
-});
-
-// Обработка ошибок
-app.use((err, req, res, next) => {
-  console.error('Необработанная ошибка:', err);
-  res.status(500).json({ 
-    error: 'Внутренняя ошибка сервера',
-    message: err.message 
-  });
 });
 
 // Запуск сервера
 app.listen(PORT, () => {
   console.log(`🚀 Сервер запущен на порту ${PORT}`);
-  console.log(`📡 Webhook endpoint: http://localhost:${PORT}/webhook`);
-  console.log(`❤️  Health check: http://localhost:${PORT}/health`);
   
   if (!process.env.WEBHOOK_SECRET) {
     console.warn('⚠️  ВНИМАНИЕ: WEBHOOK_SECRET не установлен. Проверка подписи отключена!');

@@ -9,8 +9,9 @@ const PORT = process.env.PORT || 3333;
 
 // Middleware для получения сырого тела запроса ТОЛЬКО для /webhook (нужно для проверки подписи)
 // Важно: это должно быть ДО express.json(), чтобы Express не пытался парсить JSON дважды
-app.use('/webhook', express.raw({ 
-  type: '*/*',  // Принимать любой Content-Type для совместимости
+// Используем express.text() для получения строки, как в документации
+app.use('/webhook', express.text({ 
+  type: 'application/json',  // Принимаем application/json
   limit: '10mb' // Лимит размера тела запроса
 }));
 
@@ -91,9 +92,23 @@ async function createLeadInBitrix(data) {
  */
 app.post('/webhook', async (req, res) => {
   const signature = req.headers['x-webhook-signature'];
-  const payload = req.body; 
+  const payload = req.body; // Теперь это строка благодаря express.text()
   const secret = process.env.WEBHOOK_SECRET;
   
+  // Проверка наличия необходимых данных
+  if (!signature) {
+    return res.status(401).send('Отсутствует заголовок X-Webhook-Signature');
+  }
+  
+  if (!secret) {
+    return res.status(500).send('WEBHOOK_SECRET не настроен');
+  }
+  
+  if (!payload) {
+    return res.status(400).send('Тело запроса пустое');
+  }
+  
+  // Проверка подписи
   if (!verifyWebhookSignature(payload, signature, secret)) {
     return res.status(401).send('Недействительная подпись');
   }

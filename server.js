@@ -18,6 +18,24 @@ app.use('/webhook', express.raw({
 // Express автоматически пропустит /webhook, т.к. тело уже обработано express.raw()
 app.use(express.json({ limit: '10mb' }));
 
+/**
+ * 
+ * @param {Object} payload 
+ * @param {String} signature 
+ * @param {String} secret 
+ * @returns {Boolean}
+ */
+function verifyWebhookSignature(payload, signature, secret) {
+  const computed = crypto
+    .createHmac('sha256', secret)
+    .update(payload)
+    .digest('hex');
+
+  return crypto.timingSafeEqual(
+    Buffer.from(computed, 'hex'),
+    Buffer.from(signature, 'hex')
+  );
+}
 
 /**
  * Функция для заполнения карточки лида в Bitrix
@@ -72,7 +90,14 @@ async function createLeadInBitrix(data) {
  * Обработчик вебхука от Sasha AI
  */
 app.post('/webhook', async (req, res) => {
-  const payload = req.body; // Сырое тело запроса в виде строки
+  const signature = req.headers['x-webhook-signature'];
+  const payload = req.body; 
+  const secret = process.env.WEBHOOK_SECRET;
+  
+  if (!verifyWebhookSignature(payload, signature, secret)) {
+    return res.status(401).send('Недействительная подпись');
+  }
+  
 
   try {
     const data = JSON.parse(payload);

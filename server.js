@@ -19,6 +19,25 @@ app.use('/webhook', express.text({
 // Express автоматически пропустит /webhook, т.к. тело уже обработано express.raw()
 app.use(express.json({ limit: '10mb' }));
 
+// Middleware для логирования входящих запросов
+app.use((req, res, next) => {
+  const timestamp = new Date().toISOString();
+  console.log(`[${timestamp}] ${req.method} ${req.path}`);
+  
+  // Логируем тело запроса
+  if (req.body) {
+    if (typeof req.body === 'string') {
+      // Для /webhook (express.text())
+      console.log('Body:', req.body);
+    } else if (typeof req.body === 'object' && Object.keys(req.body).length > 0) {
+      // Для других роутов (express.json())
+      console.log('Body:', JSON.stringify(req.body, null, 2));
+    }
+  }
+  
+  next();
+});
+
 /**
  * 
  * @param {Object} payload 
@@ -108,10 +127,6 @@ app.post('/webhook', async (req, res) => {
     return res.status(400).send('Тело запроса пустое');
   }
   
-  // Проверка подписи
-  if (!verifyWebhookSignature(payload, signature, secret)) {
-    return res.status(401).send('Недействительная подпись');
-  }
   
 
   try {

@@ -111,6 +111,52 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
+/**
+ * Тестовый endpoint: отправка лида в Bitrix вручную.
+ *
+ * Использование:
+ * - POST /test/bitrix/lead
+ * - Content-Type: application/json
+ * - Body: JSON в формате вебхука Sasha AI (или частично — важны contact + call)
+ *
+ * Важно: endpoint не проверяет подпись и предназначен только для тестов.
+ */
+app.post('/test/bitrix/lead', async (req, res) => {
+  try {
+    const data = req.body;
+
+    if (!data || typeof data !== 'object') {
+      return res.status(400).json({
+        success: false,
+        error: 'Данные не предоставлены. Отправьте JSON в теле запроса'
+      });
+    }
+
+    // Минимальная валидация как в /webhook
+    if (!data.contact || !data.call) {
+      return res.status(400).json({
+        success: false,
+        error: 'Отсутствуют обязательные поля: contact или call'
+      });
+    }
+
+    const result = await createLeadInBitrix(data);
+
+    return res.json({
+      success: true,
+      message: 'Тестовый лид успешно создан в Bitrix',
+      leadId: result.leadId,
+      data: result.data
+    });
+  } catch (error) {
+    console.error('Ошибка при тестовой отправке в Bitrix:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Внутренняя ошибка сервера'
+    });
+  }
+});
+
 // Запуск сервера
 app.listen(PORT, () => {
   console.log(`🚀 Сервер запущен на порту ${PORT}`);

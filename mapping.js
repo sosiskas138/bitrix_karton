@@ -18,16 +18,10 @@ const leadMapping = {
   // БАЗОВЫЕ ПОЛЯ ЛИДА
   // ============================================
   
-  // Название лида
+  // Название лида (Всегда одно и то же – Лид от AI менеджера)
   TITLE: {
-    source: 'call.agreements.agreements',  // Откуда берем: договоренности из звонка
-    transform: (value, data) => {
-      // Если есть договоренности - используем их, иначе название колл-листа
-      if (value) {
-        return `Лид: ${value.substring(0, 100)}`;
-      }
-      return `Лид от ${data.callList?.name || 'неизвестного источника'}`;
-    }
+    source: 'static',
+    value: 'Лид от AI менеджера'
   },
   
   // Имя клиента
@@ -179,7 +173,7 @@ const leadMapping = {
   // КОНТАКТНАЯ ИНФОРМАЦИЯ
   // ============================================
   
-  // Телефон (специальный формат для Bitrix)
+  // Телефон (тип телефона – всегда WORK)
   PHONE: {
     source: 'contact.phone',  // Откуда берем: телефон контакта
     transform: (value) => {
@@ -187,10 +181,10 @@ const leadMapping = {
       const phoneFormatted = value ? value.replace(/\D/g, '') : '';
       if (!phoneFormatted) return null;
       
-      // Bitrix требует массив объектов для телефона
+      // Bitrix требует массив объектов для телефона (тип всегда WORK)
       return [{
         VALUE: phoneFormatted,
-        VALUE_TYPE: 'MOBILE'
+        VALUE_TYPE: 'WORK'
       }];
     }
   },
@@ -206,6 +200,96 @@ const leadMapping = {
         VALUE: value,
         VALUE_TYPE: 'WORK'
       }];
+    }
+  },
+  
+  // ============================================
+  // ПОЛЬЗОВАТЕЛЬСКИЕ ПОЛЯ
+  // ============================================
+  
+  // Длительность звонка
+  UF_CRM_1768733865788: {
+    source: 'call.duration',  // Откуда берем: длительность звонка в миллисекундах
+    transform: (value) => {
+      if (!value) return null;
+      // Преобразуем миллисекунды в минуты и секунды (формат: "5 мин 30 сек")
+      const minutes = Math.floor(value / 60000);
+      const seconds = Math.floor((value % 60000) / 1000);
+      return `${minutes} мин ${seconds} сек`;
+    }
+  },
+  
+  // Время начала звонка
+  UF_CRM_1768733894394: {
+    source: 'call.startedAt',  // Откуда берем: время начала звонка
+    transform: (value) => {
+      if (!value) return null;
+      // Форматируем дату в читаемый формат
+      return new Date(value).toLocaleString('ru-RU', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+    }
+  },
+  
+  // Запись звонка (ссылка)
+  UF_CRM_1768733965686: {
+    source: 'call.recordingUrl',  // Откуда берем: ссылка на запись звонка
+    transform: (value) => {
+      return value || null;
+    }
+  },
+  
+  // Запись звонка (файл)
+  UF_CRM_1768733980497: {
+    source: 'call.recordingFile',  // Откуда берем: файл записи звонка
+    transform: (value) => {
+      // Если это URL файла, можно вернуть его, или если это base64, то обработать соответственно
+      return value || null;
+    }
+  },
+  
+  // Договоренности
+  UF_CRM_1768734008070: {
+    source: 'call.agreements.agreements',  // Откуда берем: договоренности из звонка
+    transform: (value) => {
+      return value || null;
+    }
+  },
+  
+  // Время договоренности
+  UF_CRM_1768734045422: {
+    source: 'call.agreements.agreements_time',  // Откуда берем: время договоренности
+    transform: (value) => {
+      return value || null;
+    }
+  },
+  
+  // Возможный регион
+  UF_CRM_1768734059241: {
+    source: 'contact.dadataPhoneInfo.region',  // Откуда берем: регион из dadataPhoneInfo
+    transform: (value) => {
+      return value || null;
+    }
+  },
+  
+  // О клиенте
+  UF_CRM_1768734316264: {
+    source: 'call.agreements.client_facts',  // Откуда берем: факты о клиенте из договоренностей
+    transform: (value) => {
+      return value || null;
+    }
+  },
+  
+  // Закрывающее сообщение
+  UF_CRM_1768734336116: {
+    source: 'call.agreements.smsText',  // Откуда берем: SMS текст (закрывающее сообщение)
+    transform: (value) => {
+      return value || null;
     }
   }
 };

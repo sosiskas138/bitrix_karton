@@ -238,7 +238,7 @@ const leadMapping = {
   
   // Запись звонка (ссылка)
   UF_CRM_1768733965686: {
-    source: 'recordUrl',  // Откуда берем: ссылка на запись звонка
+    source: 'call.recordUrl',  // Откуда берем: ссылка на запись звонка
     transform: (value) => {
       return value || null;
     }

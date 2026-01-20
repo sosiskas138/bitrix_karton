@@ -238,7 +238,7 @@ const leadMapping = {
   
   // Запись звонка (ссылка)
   UF_CRM_1768733965686: {
-    source: 'recorUrl',  // Откуда берем: ссылка на запись звонка
+    source: 'recordUrl',  // Откуда берем: ссылка на запись звонка
     transform: (value) => {
       return value || null;
     }
@@ -287,7 +287,7 @@ const leadMapping = {
   
   // Закрывающее сообщение
   UF_CRM_1768734336116: {
-    source: 'call.callDetails.chatHistory',  // Откуда берем: SMS текст (закрывающее сообщение)
+    source: 'call.agreements.smsText',  // Откуда берем: SMS текст (закрывающее сообщение)
     transform: (value) => {
       return value || null;
     }

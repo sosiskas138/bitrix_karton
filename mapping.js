@@ -252,7 +252,21 @@ const leadMapping = {
       return value || null;
     }
   },
+
+  UF_CRM_1768927548226: {
+    source: 'call.agreements.historycall',  // Вся история диалога
+    transform: (value) => {
+      return value || null;
+    }
+  },
   
+  UF_CRM_1768927598796: {
+    source: 'call.contact.additionalFields.company',  // Компания
+    transform: (value) => {
+      return value || null;
+    }
+  },
+
   // Договоренности
   UF_CRM_1768734008070: {
     source: 'call.agreements.agreements',  // Откуда берем: договоренности из звонка
